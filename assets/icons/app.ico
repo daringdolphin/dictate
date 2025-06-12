@@ -1,0 +1,5 @@
+# VoiceClip App Icon Placeholder
+# This is a placeholder file for the app.ico
+# In a real implementation, this would be a proper ICO file
+# For now, we'll create this as a text placeholder to satisfy electron-builder
+# A proper icon should be created by a designer or icon tool 
