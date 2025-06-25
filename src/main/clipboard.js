@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ClipboardManager = void 0;
 var electron_1 = require("electron");
 var robot = require("robotjs");
+var child_process_1 = require("child_process");
 var ClipboardManager = /** @class */ (function () {
     function ClipboardManager() {
         console.log('Clipboard manager initialized');
@@ -84,59 +85,96 @@ var ClipboardManager = /** @class */ (function () {
      */
     ClipboardManager.prototype.attemptPaste = function () {
         return __awaiter(this, void 0, void 0, function () {
-            var originalClipboard, currentClipboard, focusedApp_1, problematicApps, isPotentiallyProblematic, error_2;
+            var originalClipboard, success, error_2;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 4, , 5]);
+                        if (!this.isFocusedControlEditable()) {
+                            console.log('Focused control is not editable; skipping paste');
+                            return [2 /*return*/, false];
+                        }
+                        originalClipboard = electron_1.clipboard.readText();
+                        return [4 /*yield*/, this.sleep(50)];
+                    case 1:
+                        _a.sent();
+                        robot.keyTap('v', ['control']);
+                        console.log('Sent Ctrl+V keystroke');
+                        return [4 /*yield*/, this.sleep(150)];
+                    case 2:
+                        _a.sent();
+                        return [4 /*yield*/, this.detectPasteSuccess(originalClipboard)];
+                    case 3:
+                        success = _a.sent();
+                        if (success) {
+                            console.log('\u2705 Paste operation likely successful');
+                            return [2 /*return*/, true];
+                        }
+                        else {
+                            console.log('\u274C Paste operation likely failed');
+                            return [2 /*return*/, false];
+                        }
+                        return [3 /*break*/, 5];
+                    case 4:
+                        error_2 = _a.sent();
+                        console.error('Error during paste attempt:', error_2);
+                        return [2 /*return*/, false];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    /**
+     * Detect if paste was likely successful using multiple heuristics
+     */
+    ClipboardManager.prototype.detectPasteSuccess = function (originalText) {
+        return __awaiter(this, void 0, void 0, function () {
+            var currentClipboard, error_3;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
                         _a.trys.push([0, 3, , 4]);
-                        originalClipboard = electron_1.clipboard.readText();
-                        // Small delay to ensure focus is stable
-                        return [4 /*yield*/, this.sleep(50)];
-                    case 1:
-                        // Small delay to ensure focus is stable
-                        _a.sent();
-                        // Simulate Ctrl+V
-                        robot.keyTap('v', ['control']);
-                        console.log('Sent Ctrl+V keystroke');
-                        // Wait a bit for the paste operation to complete
-                        return [4 /*yield*/, this.sleep(100)];
-                    case 2:
-                        // Wait a bit for the paste operation to complete
-                        _a.sent();
                         currentClipboard = electron_1.clipboard.readText();
-                        focusedApp_1 = this.getFocusedApplicationName();
-                        problematicApps = ['elevated', 'admin', 'system'];
-                        isPotentiallyProblematic = problematicApps.some(function (app) {
-                            return focusedApp_1.toLowerCase().includes(app);
-                        });
-                        if (isPotentiallyProblematic) {
-                            console.log('Detected potentially problematic application for pasting');
+                        if (currentClipboard !== originalText) {
+                            console.log('Clipboard changed unexpectedly');
                             return [2 /*return*/, false];
                         }
-                        return [2 /*return*/, true]; // Assume success for most cases
+                        if (!this.isFocusedControlEditable()) {
+                            console.log('Focused control no longer editable during paste check');
+                            return [2 /*return*/, false];
+                        }
+                        return [2 /*return*/, true];
                     case 3:
-                        error_2 = _a.sent();
-                        console.error('Error during paste attempt:', error_2);
+                        error_3 = _a.sent();
+                        console.error('Error detecting paste success:', error_3);
                         return [2 /*return*/, false];
                     case 4: return [2 /*return*/];
                 }
             });
         });
     };
+
     /**
-     * Get the name of the currently focused application
-     * This is a simplified version - a real implementation would use Win32 APIs
+     * Get the class name of the currently focused control using Win32 APIs
      */
     ClipboardManager.prototype.getFocusedApplicationName = function () {
         try {
-            // This is a placeholder. In a real implementation, we would use
-            // Windows APIs to get the focused window information
-            return 'unknown';
+            var ps = "\nAdd-Type @\"\nusing System;\nusing System.Runtime.InteropServices;\npublic class Win32 {\n  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();\n  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);\n  [DllImport(\"user32.dll\")] public static extern bool GetGUIThreadInfo(uint idThread, out GUITHREADINFO info);\n  [DllImport(\"user32.dll\")] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);\n}\n[StructLayout(LayoutKind.Sequential)]\npublic struct RECT { public int Left; public int Top; public int Right; public int Bottom; }\n[StructLayout(LayoutKind.Sequential)]\npublic struct GUITHREADINFO {\n  public int cbSize;\n  public int flags;\n  public IntPtr hwndActive;\n  public IntPtr hwndFocus;\n  public IntPtr hwndCapture;\n  public IntPtr hwndMenuOwner;\n  public IntPtr hwndMoveSize;\n  public IntPtr hwndCaret;\n  public RECT rcCaret;\n}\n\"@\n$hwnd = [Win32]::GetForegroundWindow()\n$tid = [Win32]::GetWindowThreadProcessId($hwnd, [IntPtr]::Zero)\n$info = New-Object GUITHREADINFO\n$info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($info)\n[Win32]::GetGUIThreadInfo($tid, [ref]$info) | Out-Null\n$focus = $info.hwndFocus\nif($focus -eq [IntPtr]::Zero){ return }\n$class = New-Object System.Text.StringBuilder 128\n[Win32]::GetClassName($focus, $class, $class.Capacity) | Out-Null\n$class.ToString()\n";
+            var encoded = Buffer.from(ps, 'utf16le').toString('base64');
+            var result = (0, child_process_1.execSync)("powershell -NoProfile -EncodedCommand ".concat(encoded), { encoding: 'utf8' });
+            var className = result.trim();
+            return className || 'unknown';
         }
         catch (error) {
             console.error('Error getting focused application:', error);
             return 'unknown';
         }
+    };
+
+    ClipboardManager.prototype.isFocusedControlEditable = function () {
+        var className = this.getFocusedApplicationName().toLowerCase();
+        var editable = ['edit', 'richedit', 'textbox'];
+        return editable.some(function (c) { return className.includes(c); });
     };
     /**
      * Simple async sleep utility

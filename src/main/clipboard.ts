@@ -1,5 +1,6 @@
 import { clipboard } from 'electron';
 import * as robot from 'robotjs';
+import { execSync } from 'child_process';
 
 export class ClipboardManager {
   constructor() {
@@ -38,6 +39,12 @@ export class ClipboardManager {
    */
   private async attemptPaste(): Promise<boolean> {
     try {
+      // Ensure focused control is editable before pasting
+      if (!this.isFocusedControlEditable()) {
+        console.log('Focused control is not editable; skipping paste');
+        return false;
+      }
+
       // Store current clipboard content to verify if paste worked
       const originalClipboard = clipboard.readText();
 
@@ -53,7 +60,7 @@ export class ClipboardManager {
 
       // Heuristic approach to detect paste success
       const success = await this.detectPasteSuccess(originalClipboard);
-      
+
       if (success) {
         console.log('✅ Paste operation likely successful');
         return true;
@@ -80,23 +87,14 @@ export class ClipboardManager {
         return false;
       }
 
-      // Check 2: Look for known problematic applications
-      const focusedApp = this.getFocusedApplicationName();
-      const problematicApps = ['elevated', 'admin', 'system', 'uac'];
-      const isPotentiallyProblematic = problematicApps.some(app => 
-        focusedApp.toLowerCase().includes(app)
-      );
-
-      if (isPotentiallyProblematic) {
-        console.log('Detected potentially problematic application for pasting');
+      // Check 2: Ensure focused control is editable
+      if (!this.isFocusedControlEditable()) {
+        console.log('Focused control no longer editable during paste check');
         return false;
       }
 
-      // Check 3: For most standard applications, assume success if no obvious failures
-      // In a production app, we might use Win32 APIs like GetGUIThreadInfo to
-      // detect if the focused control accepts text input
-      
-      return true; // Assume success for most cases
+      // Assume success if clipboard unchanged and control editable
+      return true;
 
     } catch (error) {
       console.error('Error detecting paste success:', error);
@@ -105,18 +103,64 @@ export class ClipboardManager {
   }
 
   /**
-   * Get the name of the currently focused application
-   * This is a simplified version - a real implementation would use Win32 APIs
+   * Get the class name of the currently focused control using Win32 APIs
    */
   private getFocusedApplicationName(): string {
     try {
-      // This is a placeholder. In a real implementation, we would use
-      // Windows APIs to get the focused window information
-      return 'unknown';
+      const ps = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr pid);
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint idThread, out GUITHREADINFO info);
+  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
+}
+[StructLayout(LayoutKind.Sequential)]
+public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+[StructLayout(LayoutKind.Sequential)]
+public struct GUITHREADINFO {
+  public int cbSize;
+  public int flags;
+  public IntPtr hwndActive;
+  public IntPtr hwndFocus;
+  public IntPtr hwndCapture;
+  public IntPtr hwndMenuOwner;
+  public IntPtr hwndMoveSize;
+  public IntPtr hwndCaret;
+  public RECT rcCaret;
+}
+"@
+$hwnd = [Win32]::GetForegroundWindow()
+$tid = [Win32]::GetWindowThreadProcessId($hwnd, [IntPtr]::Zero)
+$info = New-Object GUITHREADINFO
+$info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($info)
+[Win32]::GetGUIThreadInfo($tid, [ref]$info) | Out-Null
+$focus = $info.hwndFocus
+if($focus -eq [IntPtr]::Zero){ return }
+$class = New-Object System.Text.StringBuilder 128
+[Win32]::GetClassName($focus, $class, $class.Capacity) | Out-Null
+$class.ToString()
+`;
+
+      const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+      const result = execSync(`powershell -NoProfile -EncodedCommand ${encoded}`, { encoding: 'utf8' });
+      const className = result.trim();
+      return className || 'unknown';
     } catch (error) {
       console.error('Error getting focused application:', error);
       return 'unknown';
     }
+  }
+
+  /**
+   * Determine if the currently focused control is likely editable
+   */
+  private isFocusedControlEditable(): boolean {
+    const className = this.getFocusedApplicationName().toLowerCase();
+    const editable = ['edit', 'richedit', 'textbox'];
+    return editable.some(c => className.includes(c));
   }
 
   /**
