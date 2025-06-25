@@ -167,6 +167,29 @@ describe('RealtimeTranscriber', () => {
       );
     });
 
+    test('should clear connection timeout on successful open', async () => {
+      const realSetTimeout = global.setTimeout;
+      const clearSpy = jest.spyOn(global, 'clearTimeout');
+      let timeoutId: any;
+
+      jest
+        .spyOn(global, 'setTimeout')
+        .mockImplementation((fn, delay) => {
+          if (delay === 10000) {
+            timeoutId = realSetTimeout(fn as any, delay);
+            return timeoutId as any;
+          }
+          return realSetTimeout(fn as any, delay) as any;
+        });
+
+      await transcriber.start();
+
+      expect(clearSpy).toHaveBeenCalledWith(timeoutId);
+
+      (global.setTimeout as any).mockRestore();
+      clearSpy.mockRestore();
+    });
+
     test('should handle WebSocket connection timeout', async () => {
       // Create a WebSocket that never connects
       const slowMockWs = new MockWebSocketInstance('ws://test');
@@ -300,15 +323,23 @@ describe('RealtimeTranscriber', () => {
       await transcriber.start();
     });
 
-    test('should stop recording and wait for final transcript', async () => {
-      // Setup final transcript event
+    test('should wait for final transcript before closing WebSocket', async () => {
+      const closeSpy = jest.spyOn(mockWsInstance, 'close');
+
       setTimeout(() => {
+        expect(closeSpy).not.toHaveBeenCalled();
         transcriber.emit('transcript-final', 'Final transcript');
       }, 50);
 
-      const result = await transcriber.stop();
+      const stopPromise = transcriber.stop();
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(closeSpy).not.toHaveBeenCalled();
+
+      const result = await stopPromise;
 
       expect(result).toBe('Final transcript');
+      expect(closeSpy).toHaveBeenCalledWith(1000);
       expect(transcriber.recording).toBe(false);
     });
 

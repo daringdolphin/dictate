@@ -121,24 +121,25 @@ export class RealtimeTranscriber extends EventEmitter {
         }
       });
 
+      const connectTimeout = setTimeout(() => {
+        if (this.socket?.readyState !== WebSocket.OPEN) {
+          this.socket?.close();
+          reject(new Error('WebSocket connection timeout'));
+        }
+      }, 10000); // 10 second timeout
+
       this.socket.on('open', () => {
+        clearTimeout(connectTimeout);
         console.log('✅ WebSocket connected');
         this.setupWebSocketHandlers();
         resolve();
       });
 
       this.socket.on('error', (error) => {
+        clearTimeout(connectTimeout);
         console.error('❌ WebSocket error:', error);
         reject(error);
       });
-
-      // Set timeout for connection
-      setTimeout(() => {
-        if (this.socket?.readyState !== WebSocket.OPEN) {
-          this.socket?.close();
-          reject(new Error('WebSocket connection timeout'));
-        }
-      }, 10000); // 10 second timeout
     });
   }
 
@@ -340,6 +341,9 @@ export class RealtimeTranscriber extends EventEmitter {
         clearTimeout(timeout);
         this.off('transcript-final', onFinalTranscript);
         this.off('error', onError);
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          this.socket.close(1000);
+        }
         resolve(transcript);
       };
 
@@ -353,9 +357,7 @@ export class RealtimeTranscriber extends EventEmitter {
 
       this.on('transcript-final', onFinalTranscript);
       this.on('error', onError);
-
-      // Close WebSocket to signal end of input
-      this.socket!.close(1000);
+      // Wait for the server to send the final transcript before closing
     });
   }
 
