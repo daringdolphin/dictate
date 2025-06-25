@@ -12,6 +12,7 @@ interface OverlayState {
   timerSec: number;
   draft?: string;
   isVisible: boolean;
+  errorMessage?: string;
   toast?: ToastMessage | null;
 }
 
@@ -21,6 +22,7 @@ const OverlayApp: React.FC = () => {
     timerSec: 0,
     draft: undefined,
     isVisible: true,
+    errorMessage: undefined,
     toast: null
   });
 
@@ -109,12 +111,13 @@ const OverlayApp: React.FC = () => {
 
     // Listen for recording state changes
     const handleRecordingStart = () => {
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         status: 'recording',
         timerSec: 0,
         draft: undefined,
         isVisible: true,
+        errorMessage: undefined,
         toast: null
       }));
     };
@@ -131,8 +134,8 @@ const OverlayApp: React.FC = () => {
       }, 800);
     };
 
-    const handleRecordingError = () => {
-      setState(prev => ({ ...prev, status: 'error' }));
+    const handleRecordingError = (event: any, msg?: string) => {
+      setState(prev => ({ ...prev, status: 'error', errorMessage: msg }));
       // Hide after showing error message for longer duration
       setTimeout(() => {
         setState(prev => ({ ...prev, isVisible: false }));
@@ -260,8 +263,8 @@ const OverlayApp: React.FC = () => {
             }}>
               ⚠ Error
             </div>
-            <div style={{ 
-              fontSize: '9px', 
+            <div style={{
+              fontSize: '9px',
               color: 'rgba(220, 53, 69, 0.7)',
               marginTop: '8px',
               textAlign: 'center',
@@ -270,7 +273,7 @@ const OverlayApp: React.FC = () => {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }}>
-              Check microphone or network
+              {state.errorMessage ?? 'Check microphone or network'}
             </div>
           </>
         );
