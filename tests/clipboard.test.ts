@@ -1,6 +1,7 @@
 import { ClipboardManager } from '../src/main/clipboard';
 import * as robotjs from 'robotjs';
 import { clipboard } from 'electron';
+import { execSync } from 'child_process';
 
 // Mock robotjs
 jest.mock('robotjs');
@@ -16,7 +17,14 @@ jest.mock('electron', () => ({
   }
 }));
 
+// Mock child_process execSync for focused window detection
+jest.mock('child_process', () => ({
+  execSync: jest.fn(() => 'Edit')
+}));
+
+
 const mockClipboard = clipboard as jest.Mocked<typeof clipboard>;
+const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
 
 describe('ClipboardManager', () => {
   let clipboardManager: ClipboardManager;
@@ -30,6 +38,7 @@ describe('ClipboardManager', () => {
     
     // Set up default mock returns
     mockClipboard.readText.mockReturnValue('');
+    mockExecSync.mockReturnValue('Edit');
     mockRobotjs.getActiveWindow.mockReturnValue({
       title: 'Test Window',
       pid: 1234,
@@ -72,6 +81,28 @@ describe('ClipboardManager', () => {
 
       expect(mockRobotjs.keyTap).toHaveBeenCalledWith('v', ['control']);
       expect(result).toBe(true);
+    });
+
+    test('should paste when focused window is Notepad', async () => {
+      mockExecSync.mockReturnValueOnce('Edit');
+      mockClipboard.readText
+        .mockReturnValueOnce('')
+        .mockReturnValueOnce('')
+        .mockReturnValueOnce('');
+
+      const result = await clipboardManager.copyAndPaste(testText);
+
+      expect(mockRobotjs.keyTap).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+
+    test('should not paste when focused window is Paint', async () => {
+      mockExecSync.mockReturnValueOnce('MSPaintView');
+
+      const result = await clipboardManager.copyAndPaste(testText);
+
+      expect(mockRobotjs.keyTap).not.toHaveBeenCalled();
+      expect(result).toBe(false);
     });
 
     test('should handle robotjs getActiveWindow failure gracefully', async () => {
