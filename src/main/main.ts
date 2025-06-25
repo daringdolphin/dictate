@@ -209,8 +209,11 @@ class VoiceClipApp {
    * Setup audio chunk handling and IPC for Step 10 back-pressure
    */
   private setupAudioHandling(): void {
-    // TODO: Will be called when recorder window sends audio chunks
-    // For now, just log that setup is complete
+    ipcMain.on(IPC.audioChunk, (_event, chunk: ArrayBuffer) => {
+      console.log(`🔈 Received chunk: ${chunk.byteLength} bytes`);
+      this.handleAudioChunk(chunk);
+    });
+
     console.log('📊 Audio handling setup complete');
   }
 
